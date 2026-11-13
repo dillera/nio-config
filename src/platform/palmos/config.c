@@ -5,7 +5,7 @@
 static UInt16 libraryRef;
 static Boolean libraryLoaded, libraryOpen, clientOpen, dirty;
 static UInt32 clientToken;
-static Boolean usbSupported;
+static Boolean usbSupported, netSupported;
 static NioLibConfig config;
 static NioLibTransportStatus transportStatus;
 static UInt16 configFlags, nioResult;
@@ -37,7 +37,8 @@ static Boolean valid_config(const NioLibConfig *p)
 {
     return p->size == sizeof(*p) && p->version == nioConfigVersion &&
         (p->transport == nioTransportSpringboard || p->transport == nioTransportSerial ||
-         (p->transport == nioTransportUSB && usbSupported)) &&
+         (p->transport == nioTransportUSB && usbSupported) ||
+         (p->transport == nioTransportNetwork && netSupported)) &&
         !(p->serialOptions & ~nioSerialRTSCTS) &&
         (p->serialBaud == 9600 || p->serialBaud == 19200 || p->serialBaud == 38400 ||
          p->serialBaud == 57600 || p->serialBaud == 115200) &&
@@ -82,6 +83,7 @@ void config_start(void)
         return;
     }
     usbSupported = (caps & nioLibCapUSB) != 0;
+    netSupported = version.abiMinor >= 6 && (caps & nioLibCapNetLib) != 0;
     libraryOpen = true;
     config.size = sizeof(config);
     palmError = NioLibGetConfig(libraryRef, &config, &configFlags);
@@ -151,6 +153,9 @@ void config_action(UInt16 id)
     case 1007:
         if (!usbSupported) { message = "USB needs newer NioLib"; return; }
         config.transport = nioTransportUSB; break;
+    case 1008:
+        if (!netSupported) { message = "Network needs NioLib 1.6"; return; }
+        config.transport = nioTransportNetwork; break;
     case 1003:
         if (config.transport != nioTransportSerial) return;
         switch (config.serialBaud) {
@@ -180,6 +185,8 @@ static void draw(void)
                 config.transport == nioTransportSerial);
     CtlSetValue(FrmGetObjectPtr(FrmGetActiveForm(), FrmGetObjectIndex(FrmGetActiveForm(),1007)),
                 config.transport == nioTransportUSB);
+    CtlSetValue(FrmGetObjectPtr(FrmGetActiveForm(), FrmGetObjectIndex(FrmGetActiveForm(),1008)),
+                config.transport == nioTransportNetwork);
     WinEraseRectangle(&area,0); WinEraseRectangle(&status,0);
     if (config.transport == nioTransportSerial) {
         StrCopy(buf,"Baud: "); StrIToA(number,config.serialBaud); StrCat(buf,number); line(buf,20);
@@ -207,11 +214,19 @@ static Boolean handle(EventType *event)
     }
     return false;
 }
+#ifdef NIO_HIRES
+/* hires/hires.c: the same settings, and more, on a high-density colour screen (Palm OS 5). */
+Boolean hires_capable(void);
+UInt32 hires_main(void);
+#endif
 UInt32 PilotMain(UInt16 cmd, NioPalmLaunchPtr params, UInt16 flags)
 {
     EventType event; UInt16 error; FormPtr form;
     (void)params; (void)flags;
     if (cmd != sysAppLaunchCmdNormalLaunch) return 0;
+#ifdef NIO_HIRES
+    if (hires_capable()) return hires_main();
+#endif
     config_start(); FrmGotoForm(1000);
     do {
         EvtGetEvent(&event, evtWaitForever);

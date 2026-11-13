@@ -1,0 +1,17 @@
+/* NIO Config's high-density screen (hires.c): a blank form for the menus and events, and the fonts. */
+FORM ID 1100 AT (0 0 160 160) NOFRAME USABLE
+BEGIN
+END
+
+ICONFAMILYEX
+BEGIN
+    BITMAP "icon1.bmp" BPP 1
+    BITMAP "icon16.bmp" BPP 16 TRANSPARENT 255 0 255
+    BITMAP "icon16hd.bmp" BPP 16 DENSITY 144 TRANSPARENT 255 0 255
+END
+
+DATA "Glyf" ID 1000 "fonts/glyphs0.bin"
+DATA "Glyf" ID 1001 "fonts/glyphs1.bin"
+DATA "Glyf" ID 1002 "fonts/glyphs2.bin"
+DATA "Glyf" ID 1003 "fonts/glyphs3.bin"
+DATA "Glyf" ID 1004 "fonts/glyphs4.bin"
