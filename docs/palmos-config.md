@@ -94,3 +94,15 @@ Serial hardware, macOS compile/runtime, long-duration heap/stress use and arbitr
 physical error recovery remain unqualified. ESP32-S3 USB Host is not implemented.
 This app does not implement Hosts/Devices, application installation, background
 networking, HotSync or automatic transport switching.
+
+## Network transport and the colour UI
+
+With NioLib 1.6 or later reporting `nioLibCapNetLib`, NIO Config offers **Network**: the NIO runs inside NioLib on
+the Palm and uses the Palm's own NetLib (for example PPP over Bluetooth to a gateway on a Sony Clie TG50).
+
+`make -f makefiles/palmos.mk PALMOS_HIRES=1` builds the same application with `src/platform/palmos/hires/`, against the
+Palm OS 5 SDK headers. On a high-density colour screen (Palm OS 5) it shows a 320x320 colour UI: LINK (an animated
+route from the Palm to the Internet, the transport, saved when tapped, NetLib's link, address and counters, Connect
+and Hang up), TEST (timed probes through NioLib: the NIO's info, TCP to game servers, an HTTP fetch) and DEVICE
+(battery and free memory gauges, OS, maker, screen). Any other Palm gets the standard form. Its text is drawn from
+SYN-ACK WIRE's fonts (Share Tech Mono, VT323, Orbitron; SIL Open Font License), made into rectangles in `hires/fonts`.
