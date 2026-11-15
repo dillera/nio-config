@@ -21,6 +21,18 @@
 #define PAGE_Y  38
 #define PAGE_H  (SCREEN_H - TAB_H - PAGE_Y)
 
+/* The pages, left to right. A build with H2H_DIR (makefiles/palmos.mk) adds H2H: the head-to-head speed test. */
+#define P_LINK 0
+#define P_TEST 1
+#ifdef NIO_H2H
+#define P_H2H 2
+#define P_DEVICE 3
+#define NPAGES 4
+#else
+#define P_DEVICE 2
+#define NPAGES 3
+#endif
+
 static UInt16 ref;
 static Boolean open_, loaded;
 static NioLibVersion ver;
@@ -269,11 +281,15 @@ static void header(void)
 
 static void tabs(void)
 {
-    static const char *const names[3] = { "LINK", "TEST", "DEVICE" };
+#ifdef NIO_H2H
+    static const char *const names[NPAGES] = { "LINK", "TEST", "H2H", "DEVICE" };
+#else
+    static const char *const names[NPAGES] = { "LINK", "TEST", "DEVICE" };
+#endif
     UInt8 i;
-    short w = SCREEN_W / 3, y = SCREEN_H - TAB_H;
+    short w = SCREEN_W / NPAGES, y = SCREEN_H - TAB_H;
     gfx_rect(0, y - 1, SCREEN_W, 1, C_EDGE);
-    for (i = 0; i < 3; ++i) {
+    for (i = 0; i < NPAGES; ++i) {
         vgrad(i * w, y, w, TAB_H, i == page ? mix(C_CYAN, C_BG2, 9) : C_BG1, C_BG0);
         if (i == page) gfx_rect(i * w + 6, y, w - 12, 3, C_CYAN);
         say_c(i * w, w, y + 8, names[i], F_HEAD, i == page ? C_WHITE : C_DIM);
@@ -530,6 +546,10 @@ static void draw_device(void)
     say(110, y + 78, has_netlib() ? "NETLIB + NIO IN NIOLIB" : "-", F_SMALL, C_GREEN);
 }
 
+#ifdef NIO_H2H
+#include "h2h_page.c"
+#endif
+
 /* ---------------------------------------------------------------- the app */
 
 static void draw_all(void)
@@ -537,7 +557,12 @@ static void draw_all(void)
     gfx_begin(1);
     gfx_rect(0, 0, SCREEN_W, SCREEN_H, C_BG0);
     header();
-    if (page == 0) draw_link(); else if (page == 1) draw_test(); else draw_device();
+    if (page == P_LINK) draw_link();
+    else if (page == P_TEST) draw_test();
+#ifdef NIO_H2H
+    else if (page == P_H2H) draw_h2h();
+#endif
+    else draw_device();
     tabs();
     gfx_end();
 }
@@ -546,13 +571,13 @@ static void tap(short x, short y)
 {
     short w;
     if (y >= SCREEN_H - TAB_H) {
-        page = (UInt8)(x * 3 / SCREEN_W);
+        page = (UInt8)(x * NPAGES / SCREEN_W);
         note = "";
         play(s_click);
         draw_all();
         return;
     }
-    if (page == 0) {
+    if (page == P_LINK) {
         w = (SCREEN_W - 16 - 9) / 4;
         if (y >= 108 && y < 134) {
             UInt8 i = (UInt8)((x - 8) / (w + 3));
@@ -566,10 +591,14 @@ static void tap(short x, short y)
         } else
             return;
         draw_all();
-    } else if (page == 1 && y < PAGE_Y + 30 && x >= SCREEN_W - 104) {
+    } else if (page == P_TEST && y < PAGE_Y + 30 && x >= SCREEN_W - 104) {
         play(s_click);
         run_all();
     }
+#ifdef NIO_H2H
+    else if (page == P_H2H)
+        h2h_tap(x, y);
+#endif
 }
 
 Boolean hires_capable(void)
@@ -597,7 +626,7 @@ UInt32 hires_main(void)
         if (SysHandleEvent(&e) || MenuHandleEvent(NULL, &e, &err)) continue;
         if (e.eType == penDownEvent && e.screenY < 160) {
             tap((short)(e.screenX * 2), (short)(e.screenY * 2));
-        } else if (e.eType == nilEvent && page == 0) {
+        } else if (e.eType == nilEvent && page == P_LINK) {
             ++anim;
             pulse = (UInt8)((anim & 15) < 8 ? (anim & 7) * 2 : 14 - (anim & 7) * 2);
             changed = !(anim & 15) && poll_status();

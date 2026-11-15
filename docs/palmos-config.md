@@ -109,3 +109,13 @@ SYN-ACK WIRE's fonts (Share Tech Mono, VT323, Orbitron; SIL Open Font License), 
 Each action answers with a short sound, and so does a link that comes up or drops while LINK shows it, at the Palm's
 system sound volume (or its game sound volume when system sounds are off). While LINK shows a link, NioLib's status
 starts NetLib's idle time over, so the link stays up.
+
+`H2H_DIR=<head-to-head-test>/palm` (with `PALMOS_HIRES=1`) adds an H2H page between TEST and DEVICE: the
+head-to-head speed test's suite, linked from head-to-head-test as its H2H NL app is, run through NioLib's saved
+transport against `http://fujinet.online:8199/h2h`, its results then sent there under the tester's name (stack
+`niolib-network` for the Network transport). NAME sets the name in a dialog (a Palm that never synced with desktop
+HotSync has no HotSync name); it is saved in NIO Config's preferences and starts as the HotSync name where there is
+one. Before each run the page sets the Palm's clock from NIO: the device's
+clock (`fn_clock_get`), or, as NioLib's Network transport has no clock device, RFC 868 time from `time.nist.gov` over a
+NIO TCP connection, adjusted by the Palm's time zone and daylight saving setting. That build links as one 64 KB code
+resource (`text_64k`); without `H2H_DIR` the build is unchanged.

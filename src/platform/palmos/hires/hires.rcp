@@ -3,6 +3,15 @@ FORM ID 1100 AT (0 0 160 160) NOFRAME USABLE
 BEGIN
 END
 
+/* The H2H page's NAME (h2h_page.c): FrmCustomResponseAlert adds the text field. */
+ALERT ID 1200
+CONFIRMATION
+BEGIN
+    TITLE "Tester name"
+    MESSAGE "Your name for the H2H results on fujinet.online:"
+    BUTTONS "OK" "Cancel"
+END
+
 ICONFAMILYEX
 BEGIN
     BITMAP "icon1.bmp" BPP 1
