@@ -106,3 +106,6 @@ route from the Palm to the Internet, the transport, saved when tapped, NetLib's 
 and Hang up), TEST (timed probes through NioLib: the NIO's info, TCP to game servers, an HTTP fetch) and DEVICE
 (battery and free memory gauges, OS, maker, screen). Any other Palm gets the standard form. Its text is drawn from
 SYN-ACK WIRE's fonts (Share Tech Mono, VT323, Orbitron; SIL Open Font License), made into rectangles in `hires/fonts`.
+Each action answers with a short sound, and so does a link that comes up or drops while LINK shows it, at the Palm's
+system sound volume (or its game sound volume when system sounds are off). While LINK shows a link, NioLib's status
+starts NetLib's idle time over, so the link stays up.

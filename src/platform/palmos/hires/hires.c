@@ -8,6 +8,8 @@
  *           servers, an HTTP fetch, each a bar of its time.
  *   DEVICE  the Palm itself: battery and free memory as gauges, its OS, maker and screen.
  *
+ * Each action answers with a short sound, and so does a link that comes up or drops while LINK is showing.
+ *
  * config.c's PilotMain runs this when hires_capable() says the screen allows; everything else is NioLib's own API. */
 #include <PalmOS.h>
 #include <NetMgr.h>
@@ -120,6 +122,44 @@ static void gauge(short cx, short cy, short r, UInt8 pct, rgb_t c, const char *b
     say_c(cx - r, 2 * r, cy + 13, label, F_TINY, C_DIM);
 }
 
+/* ---------------------------------------------------------------- sound */
+
+/* SYN-ACK WIRE's style on the Palm's speaker: short runs of square-wave notes, a few hundred milliseconds at most,
+ * each played to its end before the next. The volume is the Palm's system sound volume, or its game sound volume
+ * when system sounds are off; with both off NIO Config is quiet. */
+struct note { UInt16 hz; UInt8 ms; };   /* hz 0: a rest; ms 0: the end */
+static const struct note s_click[] = { { 1800, 6 }, { 0, 0 } };
+static const struct note s_saved[] = { { 659, 40 }, { 784, 40 }, { 1047, 80 }, { 0, 0 } };
+static const struct note s_error[] = { { 196, 70 }, { 0, 30 }, { 147, 120 }, { 0, 0 } };
+static const struct note s_dial[] = { { 1300, 35 }, { 2100, 35 }, { 1300, 35 }, { 2100, 35 }, { 0, 0 } };
+static const struct note s_up[] = { { 523, 50 }, { 659, 50 }, { 784, 50 }, { 1047, 120 }, { 0, 0 } };
+static const struct note s_down[] = { { 784, 60 }, { 659, 60 }, { 523, 60 }, { 392, 130 }, { 0, 0 } };
+static const struct note s_pass[] = { { 1568, 25 }, { 2093, 45 }, { 0, 0 } };
+static const struct note s_fail[] = { { 220, 100 }, { 0, 0 } };
+static const struct note s_done[] = { { 523, 60 }, { 659, 60 }, { 784, 60 }, { 1047, 60 }, { 0, 40 }, { 784, 50 },
+                                      { 1047, 170 }, { 0, 0 } };
+static const struct note s_partly[] = { { 440, 80 }, { 349, 80 }, { 294, 170 }, { 0, 0 } };
+
+static void play(const struct note *n)
+{
+    SndCommandType c;
+    UInt16 amp = PrefGetPreference(prefSysSoundVolume);
+    if (!amp) amp = PrefGetPreference(prefGameSoundVolume);
+    if (!amp) return;
+    for (; n->ms; ++n) {
+        if (!n->hz) {
+            SysTaskDelay(((Int32)n->ms * SysTicksPerSecond() + 999) / 1000);
+            continue;
+        }
+        c.cmd = sndCmdFreqDurationAmp;
+        c.reserved = 0;
+        c.param1 = n->hz;
+        c.param2 = n->ms;
+        c.param3 = amp;
+        SndDoCmd(NULL, &c, false);
+    }
+}
+
 /* ---------------------------------------------------------------- NioLib */
 
 static void lib_open(void)
@@ -151,17 +191,33 @@ static void read_status(void)
     if (!has_netlib() || NioLibGetNetLibStatus(ref, &net)) MemSet(&net, sizeof(net), 0);
 }
 
+static Boolean link_up(void) { return (net.flags & nioNetLibUp) != 0; }
+
+/* LINK's once-a-second look at the link. NioLib's status starts NetLib's idle time over while the link is up, so a
+ * link stays up while LINK shows it. One that comes up or drops by itself (dialled by another app, hung up from the
+ * Palm's own preferences) gets a sound and a note. */
+static Boolean poll_status(void)
+{
+    Boolean was = link_up();
+    read_status();
+    if (link_up() == was) return false;
+    if (link_up()) { note = "LINK UP"; note_c = C_GREEN; play(s_up); }
+    else { note = "LINK DROPPED"; note_c = C_AMBER; play(s_down); }
+    return true;
+}
+
 static void choose(UInt16 transport)
 {
     NioLibConfig c = cfg;
     c.transport = transport;
-    if (!open_) { note = "NIOLIB IS NOT INSTALLED"; note_c = C_RED; return; }
+    if (!open_) { note = "NIOLIB IS NOT INSTALLED"; note_c = C_RED; play(s_error); return; }
     if ((transport == nioTransportNetwork && !has_netlib()) || (transport == nioTransportUSB && !(caps & nioLibCapUSB))) {
-        note = "NOT IN THIS NIOLIB"; note_c = C_AMBER; return;
+        note = "NOT IN THIS NIOLIB"; note_c = C_AMBER; play(s_error); return;
     }
-    if (NioLibSetConfig(ref, &c)) { note = "COULD NOT SAVE"; note_c = C_RED; return; }
+    if (NioLibSetConfig(ref, &c)) { note = "COULD NOT SAVE"; note_c = C_RED; play(s_error); return; }
     cfg = c;
     note = "SAVED: APPS USE IT FROM NOW ON"; note_c = C_GREEN;
+    play(s_saved);
 }
 
 /* Dial the Network preferences' service: NetLib shows its own progress; the link stays up for its idle time. */
@@ -169,16 +225,29 @@ static void connect(void)
 {
     UInt16 nref, ifErrs = 0;
     Err err;
-    if (SysLibFind("Net.lib", &nref)) { note = "THIS PALM HAS NO NETLIB"; note_c = C_RED; return; }
+    if (SysLibFind("Net.lib", &nref)) { note = "THIS PALM HAS NO NETLIB"; note_c = C_RED; play(s_error); return; }
     note = "DIALING..."; note_c = C_AMBER;
+    play(s_dial);
     err = NetLibOpen(nref, &ifErrs);
     if ((err == errNone || err == netErrAlreadyOpen) && !ifErrs) {
         note = "CONNECTED"; note_c = C_GREEN;
         NetLibClose(nref, false);
+        play(s_up);
     } else {
         note = "NO CONNECTION: CHECK PREFS > NETWORK"; note_c = C_RED;
         if (err == errNone || err == netErrAlreadyOpen) NetLibClose(nref, true);
+        play(s_error);
     }
+}
+
+static void hang_up(void)
+{
+    Err err;
+    if (!open_ || !has_netlib()) { note = "NOT IN THIS NIOLIB"; note_c = C_AMBER; play(s_error); return; }
+    err = NioLibNetLibHangup(ref);
+    if (!err) { note = "HUNG UP"; note_c = C_AMBER; play(s_down); }
+    else if (err == nioLibErrBusy) { note = "IN USE: CANNOT HANG UP NOW"; note_c = C_AMBER; play(s_error); }
+    else { note = "COULD NOT HANG UP"; note_c = C_RED; play(s_error); }
 }
 
 /* ---------------------------------------------------------------- the frame */
@@ -393,21 +462,27 @@ static void run_probe(UInt8 i)
     if (!p->ms) p->ms = 1;
     p->state = r ? S_FAIL : S_OK;
     gfx_begin(0); probe_row(i); gfx_end();
+    play(r ? s_fail : s_pass);
 }
 
 static void run_all(void)
 {
-    UInt8 i, r;
+    UInt8 i, r, failed = 0;
     for (i = 0; i < NPROBES; ++i) probes[i].state = S_IDLE;
     note = "OPENING NIOLIB..."; note_c = C_AMBER;
     gfx_begin(1); draw_test(); notice(SCREEN_H - TAB_H - 16); gfx_end();
     r = fn_init();
     if (r) {
         note = "NIOLIB COULD NOT START THE TRANSPORT"; note_c = C_RED;
+        play(s_error);
     } else {
-        for (i = 0; i < NPROBES; ++i) run_probe(i);
+        for (i = 0; i < NPROBES; ++i) {
+            run_probe(i);
+            if (probes[i].state == S_FAIL) ++failed;
+        }
         fn_shutdown();
-        note = "DONE"; note_c = C_GREEN;
+        if (failed) { note = failed == NPROBES ? "ALL FAILED" : "DONE, SOME FAILED"; note_c = C_RED; play(s_partly); }
+        else { note = "DONE: ALL PASSED"; note_c = C_GREEN; play(s_done); }
     }
     gfx_begin(0); notice(SCREEN_H - TAB_H - 16); gfx_end();
 }
@@ -473,6 +548,7 @@ static void tap(short x, short y)
     if (y >= SCREEN_H - TAB_H) {
         page = (UInt8)(x * 3 / SCREEN_W);
         note = "";
+        play(s_click);
         draw_all();
         return;
     }
@@ -486,11 +562,12 @@ static void tap(short x, short y)
         } else if (x >= SCREEN_W - 114 && y >= 150 && y < 172) {
             connect();
         } else if (x >= SCREEN_W - 114 && y >= 176 && y < 198) {
-            if (open_ && has_netlib() && !NioLibNetLibHangup(ref)) { note = "HUNG UP"; note_c = C_AMBER; }
+            hang_up();
         } else
             return;
         draw_all();
     } else if (page == 1 && y < PAGE_Y + 30 && x >= SCREEN_W - 104) {
+        play(s_click);
         run_all();
     }
 }
@@ -508,6 +585,7 @@ UInt32 hires_main(void)
 {
     EventType e;
     UInt16 err;
+    Boolean changed;
     FormType *f = FrmInitForm(1100);
     FrmSetActiveForm(f);
     FrmDrawForm(f);
@@ -522,10 +600,11 @@ UInt32 hires_main(void)
         } else if (e.eType == nilEvent && page == 0) {
             ++anim;
             pulse = (UInt8)((anim & 15) < 8 ? (anim & 7) * 2 : 14 - (anim & 7) * 2);
-            if (!(anim & 15)) read_status();
+            changed = !(anim & 15) && poll_status();
             gfx_begin(0);
-            route((net.flags & nioNetLibUp) != 0);
+            route(link_up());
             if (!(anim & 15)) link_status();
+            if (changed) notice(252);
             gfx_end();
         } else if (e.eType == frmUpdateEvent)
             draw_all();
